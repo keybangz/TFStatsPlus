@@ -28,6 +28,7 @@ ConVar g_cPointGain;
 ConVar g_cPointLoss;
 
 enum struct PlayerRank {
+    char name[MAXPLAYERS+1];
     int points[MAXPLAYERS+1];
     int highestmph[MAXPLAYERS+1];
 }
@@ -122,17 +123,20 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
     int userid = event.GetInt("userid");
     int attacker = event.GetInt("attacker");
 
-    if(IsClientInGame(userid) || IsClientInGame(attacker))
+    if(!IsClientInGame(userid) || !IsClientInGame(attacker))
         return Plugin_Handled;
 
-    if((r.points[attacker] || r.points[userid] <= 0.0))
+    if(IsFakeClient(userid) || IsFakeClient(attacker))
+        return Plugin_Handled;
+
+    if((r.points[attacker] || r.points[userid] <= 0))
         return Plugin_Handled;
 
     PrintToChat(userid, "[SM] You have lost %i points to %N.", g_cPointLoss.IntValue, attacker);
     PrintToChat(attacker, "[SM] You have gained %i points for killing %N.", g_cPointGain.IntValue, userid);
 
-    r.points[attacker] + g_cPointGain.IntValue;
-    r.points[userid] - g_cPointLoss.IntValue;
+    r.points[attacker] = r.points[attacker] + g_cPointGain.IntValue;
+    r.points[userid] = r.points[attacker] - g_cPointLoss.IntValue;
 
     return Plugin_Handled;
 }
