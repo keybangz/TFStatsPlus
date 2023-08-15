@@ -33,3 +33,4 @@
 *.sh
 spcomp
 spcomp64
+WebPanel/node_modules/*
