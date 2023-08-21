@@ -97,7 +97,7 @@ public void OnClientPostAdminCheck(int client) {
     GetClientName(client, sName, sizeof(sName));
 
     char sQuery[256]; 
-    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT INTO onlineplayers(name, steamid) VALUES('%s', '%s')", sName, sSteamID);
+    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT INTO leaderboard(name, steamid) VALUES('%s', '%s')", sName, sSteamID);
     hDatabase.Query(CheckRank, sQuery);
 }
 
