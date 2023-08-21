@@ -23,9 +23,12 @@ create bot which records & uploads gameplay vs bot for highest speed on 1. indiv
 
 */
 
+Database hDatabase = null;
+
 ConVar g_cEnableDBStats;
 ConVar g_cPointGain;
 ConVar g_cPointLoss;
+ConVar g_cSQLDatabase;
 
 enum struct PlayerRank {
     char name[MAXPLAYERS+1];
@@ -39,14 +42,68 @@ PlayerRank r;
 public void OnPluginStart() {
     RegConsoleCmd("sm_rank", Command_CheckRank, "A command to check your rank on dodgeball.");
 
-    g_cEnableDBStats = CreateConVar("sm_tfdbstats_enable", "1", "Enable TF2 Dodgeball Stats?", _, true, 0.0, true, 1.0);
-    g_cPointGain = CreateConVar("sm_tfdb_pointgain", "2", "Amount of points to give to player when they kill someone?", _, true, 0.0, false);
-    g_cPointLoss = CreateConVar("sm_tfdb_pointloss", "2", "Amount of points for player to lose when they die", _, true, 0.0, false);
+    g_cEnableDBStats = CreateConVar("sm_tf2stats_enable", "1", "Enable TF2 Dodgeball Stats?", _, true, 0.0, true, 1.0);
+    g_cPointGain = CreateConVar("sm_tf2stats_pointgain", "2", "Amount of points to give to player when they kill someone?", _, true, 0.0, false);
+    g_cPointLoss = CreateConVar("sm_tf2stats_pointloss", "2", "Amount of points for player to lose when they die", _, true, 0.0, false);
+    g_cSQLDatabase = CreateConVar("sm_tf2stats_db", "leaderboard", "Name of the database connecting to store player data.", _, false, _, false, _);
 
     HookEvent("player_death", OnPlayerDeath);
     HookEvent("arena_round_start", OnArenaRoundStart);
 
-    // Probably intialize MySQL structure here
+    StartSQL();
+}
+
+// implementing mysql based off wiki example
+void StartSQL() {
+    // created in memory on pluginload, in low level languages would i delete this or initialize it somewhere else? idk. 
+    char dbname[64];
+
+    // connect to db name set for databases.cfg
+    g_cSQLDatabase.GetString(dbname, sizeof(dbname));
+
+    Database.Connect(GotDatabase, dbname);
+}
+
+// connection callback
+public void GotDatabase(Database db, const char[] error, any data) {
+    if(db == null)
+        LogError("Database failure: %s", error);
+
+    hDatabase = db;
+
+    char sQuery[256];
+
+    hDatabase.Format(sQuery, sizeof(sQuery), "CREATE OR REPLACE TABLE leaderboard (name varchar(128) NOT NULL, steamid varchar(32))");
+    hDatabase.Query(OnSQLConnect, sQuery);
+}
+
+public void OnSQLConnect(Database db, DBResultSet results, const char[] error, any data) {
+    if(results == null) 
+        LogError("Query failure: %s", error);
+    
+    for(int i = 1; i <= MaxClients; i++) {
+        if(IsClientInGame(i))
+            OnClientPostAdminCheck(i);
+    }
+}
+
+// grab steamid from client and check if they exist in the database
+public void OnClientPostAdminCheck(int client) {
+    char sSteamID[32];
+    if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
+        return;
+
+    char sName[MAX_NAME_LENGTH];
+    GetClientName(client, sName, sizeof(sName));
+
+    char sQuery[256]; 
+    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT INTO onlineplayers(name, steamid) VALUES('%s', '%s')", sName, sSteamID);
+    hDatabase.Query(CheckRank, sQuery);
+}
+
+public void CheckRank(Database db, DBResultSet results, const char[] error, any data) {
+    if(results == null)
+        LogError("Query failure", error); 
 }
 
 // commands
@@ -63,13 +120,13 @@ public void OnClientPutInServer(int client) {
 }
 
 public Action Command_CheckRank(int client, int args) {
-    if(args >> 0)
+    if(!g_cEnableDBStats.BoolValue)
         return Plugin_Handled;
 
     if(!IsClientInGame(client))
         return Plugin_Handled;
 
-    if(!g_cEnableDBStats.BoolValue)
+    if(args >> 0)
         return Plugin_Handled;
 
     // at this point we'll probably want to check when the db is connected to display stats.
