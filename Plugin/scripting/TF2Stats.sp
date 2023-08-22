@@ -109,10 +109,83 @@ public void OnClientPostAdminCheck(int client) {
     char sName[MAX_NAME_LENGTH];
     GetClientName(client, sName, sizeof(sName));
 
-    char sQuery[256]; 
-    hDatabase.Format(sQuery, sizeof(sQuery), "SELECT points FROM leaderboard WHERE steamid='%s'", sSteamID);
+    FetchPlayerInfo(client, sName, sSteamID);
+}
+
+public void OnClientDisconnect(int client) {
+    if(!g_cEnableDBStats.BoolValue)
+        return;
+
+    UpdatePlayerInfo(client);
+}
+
+void UpdatePlayerInfo(int client) {
+    char sSteamID[32];
+    if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
+        return;
+
+    char sQuery[255];
+
+    // points
+    hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET points='%i' WHERE steamid='%s'", r.points[client], sSteamID);
     DBResultSet query = SQL_Query(hDatabase, sQuery);
 
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else
+        delete query;  
+
+    PrintToServer("[SM] %N has %i points.", client, r.points[client]);
+
+    // kills
+    hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET kills='%i' WHERE steamid='%s'", r.kills[client], sSteamID);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else
+        delete query;  
+
+    PrintToServer("[SM] %N has %i kills.", client, r.kills[client]);
+
+    // deaths
+    hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET deaths='%i' WHERE steamid='%s'", r.deaths[client], sSteamID);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else
+        delete query;  
+
+    PrintToServer("[SM] %N has %i deaths.", client, r.deaths[client]);
+
+    // assists
+    hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET assists='%i' WHERE steamid='%s'", r.assists[client], sSteamID);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else
+        delete query;  
+
+    PrintToServer("[SM] %N has %i assists.", client, r.assists[client]);
+}
+
+void FetchPlayerInfo(int client, char[] name, char[] steamid) {
+    // Grab all info on database if exists, update player info then match plugin with database
+    char sQuery[255];
+
+    // points
+    hDatabase.Format(sQuery, sizeof(sQuery), "SELECT points FROM leaderboard WHERE steamid='%s'", steamid);
+    DBResultSet query = SQL_Query(hDatabase, sQuery);
     int result;
 
     if(query == null) {
@@ -127,10 +200,67 @@ public void OnClientPostAdminCheck(int client) {
         delete query;
     }   
 
-    PrintToServer("[SM] %N has %i points.", client, result);
     r.points[client] = result;
+    PrintToServer("[SM] %N has %i points.", client, result);
 
-    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT IGNORE INTO leaderboard(name, steamid, points) VALUES('%s', '%s', '%i') FROM dual WHERE NOT EXISTS (SELECT name,steamid,points FROM leaderboard WHERE name='%s',steamid='%s',points='%i')", sName, sSteamID, result, sName, sSteamID, result);
+    // kills
+    hDatabase.Format(sQuery, sizeof(sQuery), "SELECT kills FROM leaderboard WHERE steamid='%s'", steamid);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else {
+        while(query.FetchRow()) {
+            result = query.FetchInt(0);
+        }
+
+        delete query;
+    }
+
+    r.kills[client] = result;
+    PrintToServer("[SM] %N has %i kills.", client, result);
+
+    // deaths
+    hDatabase.Format(sQuery, sizeof(sQuery), "SELECT deaths FROM leaderboard WHERE steamid='%s'", steamid);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else {
+        while(query.FetchRow()) {
+            result = query.FetchInt(0);
+        }
+
+        delete query;
+    }
+
+    r.deaths[client] = result;
+    PrintToServer("[SM] %N has %i deaths.", client, result);
+
+    // assists
+    hDatabase.Format(sQuery, sizeof(sQuery), "SELECT assists FROM leaderboard WHERE steamid='%s'", steamid);
+    query = SQL_Query(hDatabase, sQuery);
+
+    if(query == null) {
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+    }
+    else {
+        while(query.FetchRow()) {
+            result = query.FetchInt(0);
+        }
+
+        delete query;
+    }
+
+    r.assists[client] = result;
+    PrintToServer("[SM] %N has %i assists.", client, result);
+
+    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT IGNORE INTO leaderboard(name, steamid, points) VALUES('%s', '%s', '%i') FROM dual WHERE NOT EXISTS (SELECT name,steamid,points FROM leaderboard WHERE name='%s',steamid='%s',points='%i')", name, steamid, result, name, steamid, result);
 
     query = SQL_Query(hDatabase, sQuery);
     if(query == null) {
@@ -190,6 +320,7 @@ public Action Command_CheckRank(int client, int args) {
         return Plugin_Handled;
 
     DrawRankMenu(client, sSteamID);
+    UpdatePlayerInfo(client);
 
     // TODO:
     // we need to figure out what data we want to save, atm killing another person will give 2 points and that can represent people on a leaderboard.
@@ -240,18 +371,38 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
 
     int userid = GetClientOfUserId(event.GetInt("userid"));
     int attacker = GetClientOfUserId(event.GetInt("attacker"));
+    int assist = GetClientOfUserId(event.GetInt("assister"));
 
     if(!IsClientInGame(userid) || !IsClientInGame(attacker))
         return Plugin_Handled;
 
-    if(IsFakeClient(attacker))
+    if(userid == attacker) // don't count suicide stats
         return Plugin_Handled;
 
-    PrintToChat(userid, "[SM] You have lost %i points to %N.", g_cPointLoss.IntValue, attacker);
+    //if(IsFakeClient(attacker)) FIXME: UNCOMMENT LATER
+        //return Plugin_Handled;
+
+    PrintToChat(userid, "[SM] You have lost %i points for dying to %N.", g_cPointLoss.IntValue, attacker);
     PrintToChat(attacker, "[SM] You have gained %i points for killing %N.", g_cPointGain.IntValue, userid);
 
-    r.points[attacker] = r.points[attacker] + g_cPointGain.IntValue;
-    r.points[userid] = r.points[attacker] - g_cPointLoss.IntValue;
+    int pointsW = r.points[attacker] + g_cPointGain.IntValue;
+    int pointsL = r.points[userid] - g_cPointLoss.IntValue;
+
+    r.points[attacker] = pointsW;
+    r.points[userid] = pointsL;
+
+    r.kills[attacker]++;
+    r.deaths[userid]++;
+
+    // why we gotta do this doh??? shouldn't IsClientInGame be enough?
+    if(assist >> 0 && assist < MaxClients) {
+        if(IsClientInGame(assist)) {
+            r.assists[assist]++;
+            PrintToChat(assist, "[SM] You have gained 1 point for assisting %N", attacker);
+        }   
+    }
+
+    UpdatePlayerInfo(userid);
 
     return Plugin_Handled;
 }
