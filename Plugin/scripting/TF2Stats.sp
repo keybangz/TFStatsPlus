@@ -124,62 +124,55 @@ void UpdatePlayerInfo(int client) {
     if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
         return;
 
+    // move all fast queries to threaded queries because we can't read the wiki LOL
+    // https://wiki.alliedmods.net/SQL_(SourceMod_Scripting)#Querying
+
     char sQuery[255];
 
     // points
     hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET points='%i' WHERE steamid='%s'", r.points[client], sSteamID);
-    DBResultSet query = SQL_Query(hDatabase, sQuery);
-
-    if(query == null) {
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
         char error[255];
         SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (error: %s)", error);
     }
-    else
-        delete query;  
-
     PrintToServer("[SM] %N has %i points.", client, r.points[client]);
 
     // kills
     hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET kills='%i' WHERE steamid='%s'", r.kills[client], sSteamID);
-    query = SQL_Query(hDatabase, sQuery);
-
-    if(query == null) {
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
         char error[255];
         SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (error: %s)", error);
     }
-    else
-        delete query;  
 
     PrintToServer("[SM] %N has %i kills.", client, r.kills[client]);
 
     // deaths
     hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET deaths='%i' WHERE steamid='%s'", r.deaths[client], sSteamID);
-    query = SQL_Query(hDatabase, sQuery);
-
-    if(query == null) {
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
         char error[255];
         SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (error: %s)", error);
     }
-    else
-        delete query;  
 
     PrintToServer("[SM] %N has %i deaths.", client, r.deaths[client]);
 
     // assists
     hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET assists='%i' WHERE steamid='%s'", r.assists[client], sSteamID);
-    query = SQL_Query(hDatabase, sQuery);
-
-    if(query == null) {
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
         char error[255];
         SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (error: %s)", error);
     }
-    else
-        delete query;  
 
     PrintToServer("[SM] %N has %i assists.", client, r.assists[client]);
 }
 
 void FetchPlayerInfo(int client, char[] name, char[] steamid) {
+    // move all fast queries to threaded queries because we can't read the wiki LOL
+    // https://wiki.alliedmods.net/SQL_(SourceMod_Scripting)#Querying
+
     // Grab all info on database if exists, update player info then match plugin with database
     char sQuery[255];
 
@@ -260,22 +253,14 @@ void FetchPlayerInfo(int client, char[] name, char[] steamid) {
     r.assists[client] = result;
     PrintToServer("[SM] %N has %i assists.", client, result);
 
-    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT IGNORE INTO leaderboard(name, steamid, points) VALUES('%s', '%s', '%i') FROM dual WHERE NOT EXISTS (SELECT name,steamid,points FROM leaderboard WHERE name='%s',steamid='%s',points='%i')", name, steamid, result, name, steamid, result);
+    // if player doesn't exist in database, create new entry with player name & steamid
+    hDatabase.Format(sQuery, sizeof(sQuery), "INSERT INTO `leaderboard` (`name`, `steamid`) SELECT '%s', '%s' FROM DUAL WHERE NOT EXISTS (SELECT * FROM `leaderboard` WHERE `name`='%s' AND `steamid`='%s' LIMIT 1)", name, steamid, name, steamid);
 
-    query = SQL_Query(hDatabase, sQuery);
-    if(query == null) {
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
         char error[255];
         SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (line: 250, error: %s)", error);
     }
-    else 
-        delete query;
-}
-
-public void CheckRank(Database db, DBResultSet results, const char[] error, any data) {
-    if(results == null)
-        LogError("Query failure: %s", error); 
-
-        
 }
 
 // commands
@@ -298,7 +283,13 @@ public Action Command_SetPoints(int client, int args) {
 
     char sQuery[256]; 
     hDatabase.Format(sQuery, sizeof(sQuery), "UPDATE leaderboard SET points='%i' WHERE steamid='%s'", r.points[client], sSteamID);
-    hDatabase.Query(CheckRank, sQuery);
+
+    if(!SQL_FastQuery(hDatabase, sQuery)) {
+        PrintToChat(client, "[SM] Failed to set leaderboard points to %s r.points: %i", points, r.points[client]);
+        char error[255];
+        SQL_GetError(hDatabase, error, sizeof(error));
+        PrintToServer("Failed to query: (error: %s)", error);
+    }
 
     PrintToChat(client, "[SM] Set leaderboard points to %s r.points: %i", points, r.points[client]);
 
@@ -321,9 +312,6 @@ public Action Command_CheckRank(int client, int args) {
 
     DrawRankMenu(client, sSteamID);
     UpdatePlayerInfo(client);
-
-    // TODO:
-    // we need to figure out what data we want to save, atm killing another person will give 2 points and that can represent people on a leaderboard.
 
     return Plugin_Handled;
 }
