@@ -25,7 +25,7 @@ create bot which records & uploads gameplay vs bot for highest speed on 1. indiv
 
 Database hDatabase = null;
 
-ConVar g_cEnableDBStats;
+ConVar g_cEnableTFStats;
 ConVar g_cPointGain;
 ConVar g_cPointLoss;
 ConVar g_cSQLDatabase;
@@ -42,9 +42,10 @@ enum struct PlayerRank {
 PlayerRank r;
 ArrayList topPlayerList = null;
 ArrayList topSteamIDList = null;
+char botIDString[MAXPLAYERS+1][64];
 
 public void OnPluginStart() {
-    g_cEnableDBStats = CreateConVar("sm_tf2stats_enable", "1", "Enable TF2 Dodgeball Stats?", _, true, 0.0, true, 1.0);
+    g_cEnableTFStats = CreateConVar("sm_tf2stats_enable", "1", "Enable TF2 Dodgeball Stats?", _, true, 0.0, true, 1.0);
     g_cPointGain = CreateConVar("sm_tf2stats_pointgain", "2", "Amount of points to give to player when they kill someone?", _, true, 0.0, false);
     g_cPointLoss = CreateConVar("sm_tf2stats_pointloss", "2", "Amount of points for player to lose when they die", _, true, 0.0, false);
     g_cSQLDatabase = CreateConVar("sm_tf2stats_db", "leaderboard", "Name of the database connecting to store player data.", _, false, _, false, _);
@@ -66,8 +67,16 @@ public void OnPluginStart() {
 
 // implementing mysql based off wiki example
 void StartSQL() {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return;
+
+    // Prevent errors
+    for(int i = 0; i < topPlayerList.Length; i++) {
+        topPlayerList.Set(i, 0);
+    }
+    for(int i = 0; i < topSteamIDList.Length; i++) {
+        topSteamIDList.Set(i, 0);
+    }
 
     char dbname[64];
     g_cSQLDatabase.GetString(dbname, sizeof(dbname));
@@ -105,29 +114,32 @@ public void OnSQLConnect(Database db, DBResultSet results, const char[] error, a
 
 // grab steamid from client and check if they exist in the database
 public void OnClientPostAdminCheck(int client) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return;
 
-    if(IsFakeClient(client))
-       return;
-
-    FetchPlayerInfo(client);
-}
-
-public void OnClientDisconnect(int client) {
-    if(!g_cEnableDBStats.BoolValue)
-        return;
-
-    if(IsFakeClient(client)) 
-        return;
-
-    UpdatePlayerInfo(client);
-}
-
-void UpdatePlayerInfo(int client) {
     char sSteamID[32];
     if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
         return;
+
+    FetchPlayerInfo(client, sSteamID);
+}
+
+public void OnClientDisconnect(int client) {
+    if(!g_cEnableTFStats.BoolValue)
+        return;
+
+    char sSteamID[32];
+
+    if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
+        return;
+
+    UpdatePlayerInfo(client, sSteamID);
+}
+
+void UpdatePlayerInfo(int client, char[] sSteamID) {
+    if(StrEqual(sSteamID, "BOT")) {
+        strcopy(sSteamID, 32, botIDString[client]);
+    }
 
     char sQuery[255];
     char buffer[256];
@@ -136,13 +148,21 @@ void UpdatePlayerInfo(int client) {
     FormatEx(sQuery, sizeof(sQuery), "UPDATE %s SET points='%i', kills='%i', deaths='%i', assists='%i' WHERE steamid='%s'", buffer, r.points[client], r.kills[client], r.deaths[client], r.assists[client], sSteamID);
     hDatabase.Query(SQL_CatchError, sQuery);
     
-    PrintToServer("[TFStats+] %N updated with %i points, %i kills, %i deaths & %i assists.", client, r.points[client], r.kills[client], r.deaths[client], r.assists[client]);
+    PrintToServer("[TFStats+] %N updated with SteamID: %s, %i points, %i kills, %i deaths & %i assists.", client, sSteamID, r.points[client], r.kills[client], r.deaths[client], r.assists[client]);
 }
 
-void FetchPlayerInfo(int client) {
-    char steamid[32];
-    if(!GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid)))
-        return;
+void FetchPlayerInfo(int client, char[] steamid) {
+    // give "fake" steamid in db for testing.
+    if(StrEqual(steamid, "BOT")) {
+        int digit[8];
+        for(int i = 0; i < sizeof(digit); i++) {
+            digit[i] = GetRandomInt(0, 9);
+        }
+
+        Format(botIDString[client], sizeof(botIDString), "STEAM_0:9:1%i%i%i%i%i%i%i%i", digit[0], digit[1], digit[2], digit[3], digit[4], digit[5], digit[6], digit[7]);
+        PrintToServer("[DEBUG] %s", botIDString[client]);
+        strcopy(steamid, 32, botIDString[client]);
+    }
 
     char name[MAX_NAME_LENGTH];
     GetClientName(client, name, sizeof(name));
@@ -155,10 +175,15 @@ void FetchPlayerInfo(int client) {
     int userid = GetClientUserId(client);
     hDatabase.Query(SQL_FetchPlayerInfo, sQuery, userid);
 
+    PrintToServer("[DEBUG] LINE 168 PLAYER: %N STEAMID: %s", client, steamid);
+
     // if player doesn't exist in database, create new entry with player name & steamid
     FormatEx(sQuery, sizeof(sQuery), "INSERT IGNORE INTO `%s` (`name`, `steamid`) SELECT '%s', '%s' FROM DUAL WHERE NOT EXISTS (SELECT * FROM `%s` WHERE `name`='%s' AND `steamid`='%s' LIMIT 1)", buffer, name, steamid, buffer, name, steamid);
-
+    
+    PrintToServer("[DEBUG] SQL Query FetchPlayerInfo():(173): %s", sQuery);
     hDatabase.Query(SQL_CatchError, sQuery);
+
+    UpdatePlayerInfo(client, steamid);
 }
 
 void SQL_CatchError(Database db, DBResultSet results, const char[] error, any data) {
@@ -177,20 +202,24 @@ void SQL_Leaderboard(Database db, DBResultSet results, const char[] error, any d
     char buffer[256];
     PrintToServer("[DEBUG] SQL_Leaderboard():results.RowCount is %i", results.RowCount);
 
+    topPlayerList.Clear(); // test
+    topSteamIDList.Clear();
+
     for(int i = 0; i < results.RowCount; i++) {
         while(results.FetchRow()) {
             if(!SQL_IsFieldNull(results, 0)) {
                 results.FetchString(0, buffer, sizeof(buffer));
-                
-                // if we already have the name in our list, don't add another one.
-                if(topPlayerList.FindString(buffer) != -1)
-                    return;
 
+                // if we already have the name in our list, don't add another one.
+                if(topPlayerList.FindString(buffer) != -1) 
+                    return;
+ 
                 topPlayerList.PushString(buffer);
                 PrintToServer("[DEBUG] SQL_Leaderboard(): %s added to topPlayerList", buffer);
             }
             else {
                 PrintToServer("[TFStats+] No results returned for SQL_Leaderboard():topPlayerList");
+                topPlayerList.Erase(i);
                 return; 
             }
 
@@ -198,14 +227,15 @@ void SQL_Leaderboard(Database db, DBResultSet results, const char[] error, any d
                 results.FetchString(2, buffer, sizeof(buffer));
 
                 // if we already have the steamid in our list, don't add another one.
-                if(topSteamIDList.FindString(buffer) != -1)
+                if(topSteamIDList.FindString(buffer) != -1) 
                     return;
 
                 topSteamIDList.PushString(buffer);
                 PrintToServer("[DEBUG] SQL_Leaderboard(): %s added to topSteamID", buffer);
             }
             else {
-                PrintToServer("[TFStats+] No results returned for SQL_Leaderboard():topSteamIDList");       
+                PrintToServer("[TFStats+] No results returned for SQL_Leaderboard():topSteamIDList");  
+                topSteamIDList.Erase(i);     
                 return;
             }
         }
@@ -277,7 +307,7 @@ void SQL_FetchOtherPlayerInfo(Database db, DBResultSet results, const char[] err
 // commands
 
 public Action Command_SetPoints(int client, int args) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return Plugin_Handled;
 
     if(!IsClientInGame(client))
@@ -286,6 +316,17 @@ public Action Command_SetPoints(int client, int args) {
     char sSteamID[32];
     if(!GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
         return Plugin_Handled;
+
+    // give "fake" steamid in db for testing.
+    if(StrEqual(sSteamID, "BOT")) {
+        for(int i = 0; i < 8; i++) {
+            int digit = GetRandomInt(0, 9);
+            char sDigit[64];
+            IntToString(digit, sDigit, sizeof(sDigit));
+            Format(sSteamID, sizeof(sSteamID), "STEAM_0:9:123%s%s%s%s", sDigit[i], sDigit[i], sDigit[i], sDigit[i]);
+            PrintToServer("[DEBUG] %N new STEAMID: %s", client, sSteamID);
+        }
+    }
 
     char points[100];
     GetCmdArg(1, points, sizeof(points));
@@ -305,7 +346,7 @@ public Action Command_SetPoints(int client, int args) {
 }
 
 public Action Command_CheckRank(int client, int args) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return Plugin_Handled;
 
     if(!IsClientInGame(client))
@@ -319,13 +360,13 @@ public Action Command_CheckRank(int client, int args) {
         return Plugin_Handled;
 
     DrawRankMenu(client, sSteamID);
-    UpdatePlayerInfo(client);
+    UpdatePlayerInfo(client, sSteamID);
 
     return Plugin_Handled;
 }
 
 public Action Command_ShowLeaderboard(int client, int args) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return Plugin_Handled;
 
     if(!IsClientInGame(client))
@@ -333,12 +374,6 @@ public Action Command_ShowLeaderboard(int client, int args) {
 
     if(args > 0)
         return Plugin_Handled;
-
-    char sQuery[256];
-    char buffer[64];
-    g_cTableName.GetString(buffer, sizeof(buffer));
-    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
-    hDatabase.Query(SQL_Leaderboard, sQuery);
 
     DrawLeaderboardMenu(client);
 
@@ -401,14 +436,18 @@ public void DrawLeaderboardMenu(int client) {
     // We'll want to look through top 100 players and grab their names, add them to the menu.
     // Upon selecting a client on the menu, show a rank menu which is the same as our client.
 
+    char sQuery[256];
+    char buffer[64];
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
+    hDatabase.Query(SQL_Leaderboard, sQuery);
+
     menu.SetTitle("Top 100 Leaderboard");
 
     char name[64];
     char steamid[64];
 
-    PrintToServer("[DEBUG] DrawLeaderboardMenu():topPlayerList size: %i", topPlayerList.Length);
-
-    for(int i = 0; i < sizeof(topPlayerList.Length); i++) {
+    for(int i = 0; i < topPlayerList.Length; i++) {
         topPlayerList.GetString(i, name, sizeof(name));
         topSteamIDList.GetString(i, steamid, sizeof(steamid));
 
@@ -416,6 +455,9 @@ public void DrawLeaderboardMenu(int client) {
         menu.AddItem(steamid, name);
     }
 
+    PrintToServer("[DEBUG] DrawLeaderboardMenu():topPlayerList size: %i", topPlayerList.Length);
+
+    menu.ExitBackButton = true;
     menu.ExitButton = true;
     menu.Display(client, MENU_TIME_FOREVER);
 }
@@ -439,14 +481,15 @@ public int RankMenu_Handler(Menu menu, MenuAction action, int param1, int param2
 }
 
 public int Leaderboard_Handler(Menu menu, MenuAction action, int param1, int param2) {
+    char steamid[64];
+
     switch(action) {
         case MenuAction_Select: {
             char info[24];
             GetMenuItem(menu, param2, info, sizeof(info));
-            char steamid[64];
             int userid = GetClientUserId(param1);
 
-            for(int i = 0; i < sizeof(topSteamIDList.Length); i++) {
+            for(int i = 0; i < topSteamIDList.Length; i++) {
                 topSteamIDList.GetString(i, steamid, sizeof(steamid));
 
                 if(StrEqual(info, steamid)) {
@@ -459,18 +502,30 @@ public int Leaderboard_Handler(Menu menu, MenuAction action, int param1, int par
                 }
             }
         }
+
+        case MenuAction_Cancel: {
+            if(!GetClientAuthId(param1, AuthId_Steam2, steamid, sizeof(steamid)))
+                return 0;
+
+            if(param2 == MenuCancel_ExitBack)
+                DrawRankMenu(param1, steamid);
+        }
     }
 
     return 0;
 }
 
 public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return Plugin_Handled;
 
     int userid = GetClientOfUserId(event.GetInt("userid"));
     int attacker = GetClientOfUserId(event.GetInt("attacker"));
     int assist = GetClientOfUserId(event.GetInt("assister"));
+
+    char sSteamID[32];
+    if(!GetClientAuthId(userid, AuthId_Steam2, sSteamID, sizeof(sSteamID)))
+        return Plugin_Handled;
 
     if(!IsClientInGame(userid) || !IsClientInGame(attacker))
         return Plugin_Handled;
@@ -506,14 +561,20 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
 
     PrintToChat(attacker, "[TFStats+] You have gained %i points for killing %N.", g_cPointGain.IntValue, userid);
 
-    UpdatePlayerInfo(userid);
+    if(!IsFakeClient(userid))
+        UpdatePlayerInfo(userid, sSteamID);
+    else
+        UpdatePlayerInfo(userid, botIDString[userid]);
 
     return Plugin_Handled;
 }
 
 public Action OnArenaRoundStart(Event event, const char[] name, bool dontBroadcast) {
-    if(!g_cEnableDBStats.BoolValue)
+    if(!g_cEnableTFStats.BoolValue)
         return Plugin_Handled;
+
+    topPlayerList.Clear(); // test
+    topSteamIDList.Clear();
 
     return Plugin_Handled;
 }
