@@ -35,3 +35,4 @@ spcomp
 spcomp64
 
 WebPanel/node_modules/
+WebPanel/node_modules/*
