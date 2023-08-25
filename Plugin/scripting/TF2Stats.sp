@@ -40,6 +40,8 @@ enum struct PlayerRank {
 }
 
 PlayerRank r;
+ArrayList topPlayerList = null;
+ArrayList topSteamIDList = null;
 
 public void OnPluginStart() {
     g_cEnableDBStats = CreateConVar("sm_tf2stats_enable", "1", "Enable TF2 Dodgeball Stats?", _, true, 0.0, true, 1.0);
@@ -48,11 +50,16 @@ public void OnPluginStart() {
     g_cSQLDatabase = CreateConVar("sm_tf2stats_db", "leaderboard", "Name of the database connecting to store player data.", _, false, _, false, _);
     g_cTableName = CreateConVar("sm_tf2stats_table", "tf2statsplus", "Name of the table holding the player data in the database.", _, false, _, false, _);
 
-    RegConsoleCmd("sm_rank", Command_CheckRank, "A command to check your rank on dodgeball.");
+    RegConsoleCmd("sm_rank", Command_CheckRank, "A command to check your rank.");
+    RegConsoleCmd("sm_top", Command_ShowLeaderboard, "A command to show 100 player leaderboard.");
     RegAdminCmd("sm_setpoints", Command_SetPoints, ADMFLAG_ROOT, "Give points to specified player");
 
     HookEvent("player_death", OnPlayerDeath);
     HookEvent("arena_round_start", OnArenaRoundStart);
+
+    // thanks baddie
+    topPlayerList = new ArrayList(ByteCountToCells(MAX_NAME_LENGTH));
+    topSteamIDList = new ArrayList(ByteCountToCells(MAX_NAME_LENGTH));
 
     StartSQL();
 }
@@ -62,10 +69,7 @@ void StartSQL() {
     if(!g_cEnableDBStats.BoolValue)
         return;
 
-    // created in memory on pluginload, in low level languages would i delete this or initialize it somewhere else? idk. 
     char dbname[64];
-
-    // connect to db name set for databases.cfg
     g_cSQLDatabase.GetString(dbname, sizeof(dbname));
 
     Database.Connect(GotDatabase, dbname);
@@ -84,6 +88,9 @@ public void GotDatabase(Database db, const char[] error, any data) {
     g_cTableName.GetString(buffer, sizeof(buffer));
     FormatEx(sQuery, sizeof(sQuery), "CREATE TABLE IF NOT EXISTS %s (id int(11) NOT NULL AUTO_INCREMENT, name varchar(128) NOT NULL, steamid varchar(32), points int(11), deaths int(11), kills int(11), assists int(11), PRIMARY KEY (id))", buffer);
     hDatabase.Query(OnSQLConnect, sQuery);
+
+    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
+    hDatabase.Query(SQL_Leaderboard, sQuery);
 }
 
 public void OnSQLConnect(Database db, DBResultSet results, const char[] error, any data) {
@@ -91,7 +98,7 @@ public void OnSQLConnect(Database db, DBResultSet results, const char[] error, a
         LogError("Query failure: %s", error);
     
     for(int i = 1; i <= MaxClients; i++) {
-        if(IsClientInGame(i) && !IsFakeClient(i))
+        if(IsClientInGame(i))
             OnClientPostAdminCheck(i);
     }
 }
@@ -102,7 +109,7 @@ public void OnClientPostAdminCheck(int client) {
         return;
 
     if(IsFakeClient(client))
-        return;
+       return;
 
     FetchPlayerInfo(client);
 }
@@ -111,7 +118,7 @@ public void OnClientDisconnect(int client) {
     if(!g_cEnableDBStats.BoolValue)
         return;
 
-    if(IsFakeClient(client))
+    if(IsFakeClient(client)) 
         return;
 
     UpdatePlayerInfo(client);
@@ -140,10 +147,6 @@ void FetchPlayerInfo(int client) {
     char name[MAX_NAME_LENGTH];
     GetClientName(client, name, sizeof(name));
 
-    // move all fast queries to threaded queries because we can't read the wiki LOL
-    // https://wiki.alliedmods.net/SQL_(SourceMod_Scripting)#Querying
-
-    // Grab all info on database if exists, update player info then match plugin with database
     char sQuery[255];
     char buffer[256];
 
@@ -154,6 +157,7 @@ void FetchPlayerInfo(int client) {
 
     // if player doesn't exist in database, create new entry with player name & steamid
     FormatEx(sQuery, sizeof(sQuery), "INSERT IGNORE INTO `%s` (`name`, `steamid`) SELECT '%s', '%s' FROM DUAL WHERE NOT EXISTS (SELECT * FROM `%s` WHERE `name`='%s' AND `steamid`='%s' LIMIT 1)", buffer, name, steamid, buffer, name, steamid);
+
     hDatabase.Query(SQL_CatchError, sQuery);
 }
 
@@ -164,11 +168,55 @@ void SQL_CatchError(Database db, DBResultSet results, const char[] error, any da
     }
 }
 
+void SQL_Leaderboard(Database db, DBResultSet results, const char[] error, any data) {
+    if(db == null || results == null || error[0] != '\0') {
+        LogError("Query failed! error: %s", error);
+        return;
+    }
+
+    char buffer[256];
+    PrintToServer("[DEBUG] SQL_Leaderboard():results.RowCount is %i", results.RowCount);
+
+    for(int i = 0; i < results.RowCount; i++) {
+        while(results.FetchRow()) {
+            if(!SQL_IsFieldNull(results, 0)) {
+                results.FetchString(0, buffer, sizeof(buffer));
+                
+                // if we already have the name in our list, don't add another one.
+                if(topPlayerList.FindString(buffer) != -1)
+                    return;
+
+                topPlayerList.PushString(buffer);
+                PrintToServer("[DEBUG] SQL_Leaderboard(): %s added to topPlayerList", buffer);
+            }
+            else {
+                PrintToServer("[TFStats+] No results returned for SQL_Leaderboard():topPlayerList");
+                return; 
+            }
+
+            if(!SQL_IsFieldNull(results, 2)) {
+                results.FetchString(2, buffer, sizeof(buffer));
+
+                // if we already have the steamid in our list, don't add another one.
+                if(topSteamIDList.FindString(buffer) != -1)
+                    return;
+
+                topSteamIDList.PushString(buffer);
+                PrintToServer("[DEBUG] SQL_Leaderboard(): %s added to topSteamID", buffer);
+            }
+            else {
+                PrintToServer("[TFStats+] No results returned for SQL_Leaderboard():topSteamIDList");       
+                return;
+            }
+        }
+    }
+}
+
 void SQL_FetchPlayerInfo(Database db, DBResultSet results, const char[] error, any data) {
     int client = 0;
 
     if(db == null || results == null || error[0] != '\0') {
-        LogError("Query failed! line: 185 error: %s", error);
+        LogError("Query failed! error: %s", error);
         return;
     }
 
@@ -190,6 +238,40 @@ void SQL_FetchPlayerInfo(Database db, DBResultSet results, const char[] error, a
     }
 
     PrintToServer("[TFStats+] %N has %i points, %i kills, %i deaths, %i assists.", client, r.points[client], r.kills[client], r.deaths[client], r.assists[client]);
+}
+
+void SQL_FetchOtherPlayerInfo(Database db, DBResultSet results, const char[] error, any data) {
+    int client = 0;
+    int points,kills,deaths,assists;
+    char name[64];
+
+    if(db == null || results == null || error[0] != '\0') {
+        LogError("Query failed! error: %s", error);
+        return;
+    }
+
+    if((client = GetClientOfUserId(data)) == 0)
+        return;
+
+    while(results.FetchRow()) {
+        if(!SQL_IsFieldNull(results, 0))
+            points = results.FetchString(0, name, sizeof(name));
+
+        if(!SQL_IsFieldNull(results, 1))
+            points = results.FetchInt(1);
+
+        if(!SQL_IsFieldNull(results, 2))
+            kills = results.FetchInt(2);
+
+        if(!SQL_IsFieldNull(results, 3))
+            deaths = results.FetchInt(3);
+
+        if(!SQL_IsFieldNull(results, 4))
+            assists = results.FetchInt(4);
+    }
+
+    // Once leaderboard player data is fetched, we'll display a replica of the same menu we use for our personal player.
+    DrawOtherRankMenu(client, name, points, kills, deaths, assists);
 }
 
 // commands
@@ -229,7 +311,7 @@ public Action Command_CheckRank(int client, int args) {
     if(!IsClientInGame(client))
         return Plugin_Handled;
 
-    if(args >> 0)
+    if(args > 0)
         return Plugin_Handled;
 
     char sSteamID[32];
@@ -242,8 +324,29 @@ public Action Command_CheckRank(int client, int args) {
     return Plugin_Handled;
 }
 
+public Action Command_ShowLeaderboard(int client, int args) {
+    if(!g_cEnableDBStats.BoolValue)
+        return Plugin_Handled;
+
+    if(!IsClientInGame(client))
+        return Plugin_Handled;
+
+    if(args > 0)
+        return Plugin_Handled;
+
+    char sQuery[256];
+    char buffer[64];
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
+    hDatabase.Query(SQL_Leaderboard, sQuery);
+
+    DrawLeaderboardMenu(client);
+
+    return Plugin_Handled;
+}
+
 public void DrawRankMenu(int client, char[] sSteamID) {
-    Menu menu = new Menu(RankLeaderboard_Handler, MENU_ACTIONS_ALL);
+    Menu menu = new Menu(RankMenu_Handler, MENU_ACTIONS_ALL);
 
     char sPlayerName[64];
 
@@ -252,6 +355,8 @@ public void DrawRankMenu(int client, char[] sSteamID) {
     menu.SetTitle(sPlayerName);
     
     char sBuffer[64];
+    Format(sBuffer, sizeof(sBuffer), "Top Leaderboard");
+    menu.AddItem("leaderboard", sBuffer);
     Format(sBuffer, sizeof(sBuffer), "Points: %i", r.points[client]);
     menu.AddItem("", sBuffer);
     Format(sBuffer, sizeof(sBuffer), "Kills: %i", r.kills[client]);
@@ -265,14 +370,94 @@ public void DrawRankMenu(int client, char[] sSteamID) {
     menu.Display(client, MENU_TIME_FOREVER);
 }
 
+public void DrawOtherRankMenu(int client, char[] sPlayerName, int iPoints, int iKills, int iDeaths, int iAssists) {
+    Menu menu = new Menu(RankMenu_Handler, MENU_ACTIONS_ALL);
+
+    char sMenuTitle[64];
+
+    Format(sMenuTitle, sizeof(sMenuTitle), "%s's leaderboard", sPlayerName);
+
+    menu.SetTitle(sMenuTitle);
+    
+    char sBuffer[64];
+    Format(sBuffer, sizeof(sBuffer), "Top Leaderboard");
+    menu.AddItem("leaderboard", sBuffer);
+    Format(sBuffer, sizeof(sBuffer), "Points: %i", iPoints);
+    menu.AddItem("", sBuffer);
+    Format(sBuffer, sizeof(sBuffer), "Kills: %i", iKills);
+    menu.AddItem("", sBuffer);
+    Format(sBuffer, sizeof(sBuffer), "Deaths: %i", iDeaths);
+    menu.AddItem("", sBuffer);
+    Format(sBuffer, sizeof(sBuffer), "Assists: %i", iAssists);
+    menu.AddItem("", sBuffer);
+
+    menu.ExitButton = true;
+    menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public void DrawLeaderboardMenu(int client) {
+    Menu menu = new Menu(Leaderboard_Handler, MENU_ACTIONS_ALL);
+
+    // We'll want to look through top 100 players and grab their names, add them to the menu.
+    // Upon selecting a client on the menu, show a rank menu which is the same as our client.
+
+    menu.SetTitle("Top 100 Leaderboard");
+
+    char name[64];
+    char steamid[64];
+
+    PrintToServer("[DEBUG] DrawLeaderboardMenu():topPlayerList size: %i", topPlayerList.Length);
+
+    for(int i = 0; i < sizeof(topPlayerList.Length); i++) {
+        topPlayerList.GetString(i, name, sizeof(name));
+        topSteamIDList.GetString(i, steamid, sizeof(steamid));
+
+        PrintToServer("[SM] Player Found: %s, %s", name, steamid);
+        menu.AddItem(steamid, name);
+    }
+
+    menu.ExitButton = true;
+    menu.Display(client, MENU_TIME_FOREVER);
+}
+
 
 // events
 
-public int RankLeaderboard_Handler(Menu menu, MenuAction action, int param1, int param2) {
+public int RankMenu_Handler(Menu menu, MenuAction action, int param1, int param2) {
     switch(action) {
         case MenuAction_Select: {
             char info[24];
-            GetMenuItem(menu, param2, info, sizeof(info));   
+            GetMenuItem(menu, param2, info, sizeof(info));  
+
+            if(StrEqual(info, "leaderboard"))   {
+                DrawLeaderboardMenu(param1);
+            }
+        }
+    }
+
+    return 0;
+}
+
+public int Leaderboard_Handler(Menu menu, MenuAction action, int param1, int param2) {
+    switch(action) {
+        case MenuAction_Select: {
+            char info[24];
+            GetMenuItem(menu, param2, info, sizeof(info));
+            char steamid[64];
+            int userid = GetClientUserId(param1);
+
+            for(int i = 0; i < sizeof(topSteamIDList.Length); i++) {
+                topSteamIDList.GetString(i, steamid, sizeof(steamid));
+
+                if(StrEqual(info, steamid)) {
+                    char sQuery[255];
+                    char buffer[256];
+
+                    g_cTableName.GetString(buffer, sizeof(buffer));
+                    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, kills, deaths, assists FROM %s WHERE steamid='%s'", buffer, steamid);
+                    hDatabase.Query(SQL_FetchOtherPlayerInfo, sQuery, userid);
+                }
+            }
         }
     }
 
@@ -296,25 +481,30 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) 
     //if(IsFakeClient(attacker)) FIXME: UNCOMMENT LATER
         //return Plugin_Handled;
 
-    PrintToChat(userid, "[TFStats+] You have lost %i points for dying to %N.", g_cPointLoss.IntValue, attacker);
-    PrintToChat(attacker, "[TFStats+] You have gained %i points for killing %N.", g_cPointGain.IntValue, userid);
-
     int pointsW = r.points[attacker] + g_cPointGain.IntValue;
     int pointsL = r.points[userid] - g_cPointLoss.IntValue;
 
+    if(pointsL > 0) {
+        r.points[userid] = pointsL;
+        PrintToChat(userid, "[TFStats+] You have lost %i points for dying to %N.", g_cPointLoss.IntValue, attacker);
+    }
+    else
+        r.points[userid] = 0;
+
     r.points[attacker] = pointsW;
-    r.points[userid] = pointsL;
 
     r.kills[attacker]++;
     r.deaths[userid]++;
 
-    if(assist >> 0 && assist < MaxClients) {
+    if(assist > 0 && assist < MaxClients) {
         if(IsClientInGame(assist)) {
             r.assists[assist]++;
             r.points[assist]++;
             PrintToChat(assist, "[TFStats+] You have gained 1 point for assisting %N", attacker);
         }   
     }
+
+    PrintToChat(attacker, "[TFStats+] You have gained %i points for killing %N.", g_cPointGain.IntValue, userid);
 
     UpdatePlayerInfo(userid);
 
