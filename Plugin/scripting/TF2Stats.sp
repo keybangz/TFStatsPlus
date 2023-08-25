@@ -29,6 +29,7 @@ ConVar g_cEnableDBStats;
 ConVar g_cPointGain;
 ConVar g_cPointLoss;
 ConVar g_cSQLDatabase;
+ConVar g_cTableName;
 
 enum struct PlayerRank {
     char name[MAXPLAYERS+1];
@@ -38,7 +39,6 @@ enum struct PlayerRank {
     int assists[MAXPLAYERS+1];
 }
 
-// should we be doing this on the global level? idk 
 PlayerRank r;
 
 public void OnPluginStart() {
@@ -46,6 +46,7 @@ public void OnPluginStart() {
     g_cPointGain = CreateConVar("sm_tf2stats_pointgain", "2", "Amount of points to give to player when they kill someone?", _, true, 0.0, false);
     g_cPointLoss = CreateConVar("sm_tf2stats_pointloss", "2", "Amount of points for player to lose when they die", _, true, 0.0, false);
     g_cSQLDatabase = CreateConVar("sm_tf2stats_db", "leaderboard", "Name of the database connecting to store player data.", _, false, _, false, _);
+    g_cTableName = CreateConVar("sm_tf2stats_table", "tf2statsplus", "Name of the table holding the player data in the database.", _, false, _, false, _);
 
     RegConsoleCmd("sm_rank", Command_CheckRank, "A command to check your rank on dodgeball.");
     RegAdminCmd("sm_setpoints", Command_SetPoints, ADMFLAG_ROOT, "Give points to specified player");
@@ -78,8 +79,10 @@ public void GotDatabase(Database db, const char[] error, any data) {
     hDatabase = db;
 
     char sQuery[256];
+    char buffer[256];
 
-    hDatabase.Format(sQuery, sizeof(sQuery), "CREATE TABLE IF NOT EXISTS leaderboard (id int(11) NOT NULL AUTO_INCREMENT, name varchar(128) NOT NULL, steamid varchar(32), points int(11), deaths int(11), kills int(11), assists int(11), PRIMARY KEY (id))");
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "CREATE TABLE IF NOT EXISTS %s (id int(11) NOT NULL AUTO_INCREMENT, name varchar(128) NOT NULL, steamid varchar(32), points int(11), deaths int(11), kills int(11), assists int(11), PRIMARY KEY (id))", buffer);
     hDatabase.Query(OnSQLConnect, sQuery);
 }
 
@@ -120,7 +123,10 @@ void UpdatePlayerInfo(int client) {
         return;
 
     char sQuery[255];
-    FormatEx(sQuery, sizeof(sQuery), "UPDATE leaderboard SET points='%i', kills='%i', deaths='%i', assists='%i' WHERE steamid='%s'", r.points[client], r.kills[client], r.deaths[client], r.assists[client], sSteamID);
+    char buffer[256];
+
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "UPDATE %s SET points='%i', kills='%i', deaths='%i', assists='%i' WHERE steamid='%s'", buffer, r.points[client], r.kills[client], r.deaths[client], r.assists[client], sSteamID);
     hDatabase.Query(SQL_CatchError, sQuery);
     
     PrintToServer("[TFStats+] %N updated with %i points, %i kills, %i deaths & %i assists.", client, r.points[client], r.kills[client], r.deaths[client], r.assists[client]);
@@ -139,12 +145,15 @@ void FetchPlayerInfo(int client) {
 
     // Grab all info on database if exists, update player info then match plugin with database
     char sQuery[255];
-    FormatEx(sQuery, sizeof(sQuery), "SELECT points, kills, deaths, assists FROM leaderboard WHERE steamid='%s'", steamid);
+    char buffer[256];
+
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "SELECT points, kills, deaths, assists FROM %s WHERE steamid='%s'", buffer, steamid);
     int userid = GetClientUserId(client);
     hDatabase.Query(SQL_FetchPlayerInfo, sQuery, userid);
 
     // if player doesn't exist in database, create new entry with player name & steamid
-    FormatEx(sQuery, sizeof(sQuery), "INSERT IGNORE INTO `leaderboard` (`name`, `steamid`) SELECT '%s', '%s' FROM DUAL WHERE NOT EXISTS (SELECT * FROM `leaderboard` WHERE `name`='%s' AND `steamid`='%s' LIMIT 1)", name, steamid, name, steamid);
+    FormatEx(sQuery, sizeof(sQuery), "INSERT IGNORE INTO `%s` (`name`, `steamid`) SELECT '%s', '%s' FROM DUAL WHERE NOT EXISTS (SELECT * FROM `%s` WHERE `name`='%s' AND `steamid`='%s' LIMIT 1)", buffer, name, steamid, buffer, name, steamid);
     hDatabase.Query(SQL_CatchError, sQuery);
 }
 
@@ -202,7 +211,10 @@ public Action Command_SetPoints(int client, int args) {
     r.points[client] = StringToInt(points);
 
     char sQuery[256]; 
-    FormatEx(sQuery, sizeof(sQuery), "UPDATE leaderboard SET points='%i' WHERE steamid='%s'", r.points[client], sSteamID);
+    char buffer[256];
+
+    g_cTableName.GetString(buffer, sizeof(buffer));
+    FormatEx(sQuery, sizeof(sQuery), "UPDATE %s SET points='%i' WHERE steamid='%s'", buffer, r.points[client], sSteamID);
     hDatabase.Query(SQL_CatchError, sQuery);
 
     PrintToChat(client, "[TFStats+] Set leaderboard points to %s r.points: %i", points, r.points[client]);
