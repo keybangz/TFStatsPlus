@@ -2,24 +2,24 @@
 A Team Fortress 2 plugin aimed to be a replacement for the popular [**[TF2] Ranking and Item Logger**](https://forums.alliedmods.net/showthread.php?p=987696). This plugin was made in my own time as a challenge to try something new, especially designing a modern web panel with a nice default look.
 
 **CONTEXT LINKS**
-[Plugin](#Plugin)
-[Web Panel](#Web-Panel)
-[MySQL](#MySQL Example)
+[Plugin](#Plugin)\
+[Web Panel](#Web-Panel)\
+[MySQL](#MySQL Example)\
 # Plugin
 
 ## Features
 
-The general gameplay logging goes like this:
+The general gameplay logging goes like this:\
 `X` player dies to `Y` - **Player Y gains `ConVarValue` points, Player X loses `ConVarValue` points.** 
 
-At the current time, the plugin does not track events such as air blasting, destroying buildings, etc. See (TODO: Add issue for plugin development)
+At the current time, the plugin does not track events such as air blasting, destroying buildings, etc. \See (TODO: Add issue for plugin development)
 ## ConVars
 
-`sm_tf2stats_enable (def: 1)`  - Enable or disable the plugin?
-`sm_tf2stats_pointgain (def: 2)`  - How many points does a player gain for killing another player?
-`sm_tf2stats_pointloss (def: 2)`  - How many points does a player lose for dying to another player?
-`sm_tf2stats_db (def: leaderboard)` - Name of database entry in databases.cfg.
-`sm_tf2stats_table (def: tf2statsplus)` - Name of table generated in database by plugin.
+`sm_tf2stats_enable (def: 1)`  - Enable or disable the plugin?\
+`sm_tf2stats_pointgain (def: 2)`  - How many points does a player gain for killing another player?\
+`sm_tf2stats_pointloss (def: 2)`  - How many points does a player lose for dying to another \player?
+`sm_tf2stats_db (def: leaderboard)` - Name of database entry in databases.cfg.\
+`sm_tf2stats_table (def: tf2statsplus)` - Name of table generated in database by plugin.\
 ## Commands
 
 `sm_rank` (!rank) - Display the rank menu which displays the current clients stats.
