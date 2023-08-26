@@ -36,3 +36,5 @@ spcomp64
 
 node_modules
 compiled
+.obsidian
+package-lock.json

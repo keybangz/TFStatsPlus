@@ -210,6 +210,9 @@ void SQL_Leaderboard(Database db, DBResultSet results, const char[] error, any d
             if(!SQL_IsFieldNull(results, 0)) {
                 results.FetchString(0, buffer, sizeof(buffer));
 
+                if(results.RowCount == 0)
+                    return;
+                
                 // if we already have the name in our list, don't add another one.
                 if(topPlayerList.FindString(buffer) != -1) 
                     return;
@@ -240,6 +243,11 @@ void SQL_Leaderboard(Database db, DBResultSet results, const char[] error, any d
             }
         }
     }
+}
+
+// use this function to iterate and update the leaderboard
+void SQL_QuickFetch(Database db, DBResultSet results, const char[] error, any data) {
+
 }
 
 void SQL_FetchPlayerInfo(Database db, DBResultSet results, const char[] error, any data) {
@@ -436,11 +444,14 @@ public void DrawLeaderboardMenu(int client) {
     // We'll want to look through top 100 players and grab their names, add them to the menu.
     // Upon selecting a client on the menu, show a rank menu which is the same as our client.
 
-    char sQuery[256];
+    char  sQuery[256];
     char buffer[64];
     g_cTableName.GetString(buffer, sizeof(buffer));
     FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
     hDatabase.Query(SQL_Leaderboard, sQuery);
+
+    FormatEx(sQuery, sizeof(sQuery), "SELECT name, points, steamid FROM %s ORDER BY points DESC LIMIT 100", buffer);
+    hDatabase.Query(SQL_QuickFetch, sQuery, client);
 
     menu.SetTitle("Top 100 Leaderboard");
 
