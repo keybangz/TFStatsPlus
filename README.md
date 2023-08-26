@@ -7,7 +7,11 @@ A Stat plugin mainly used for the dodgeball gamemode of Team Fortress 2. Soon to
 
 # Completed
 
-## MySQL and In-Game Statistics
+## In-Game leaderboard
 
-![image](https://github.com/keybangz/TF2_Dodgeball_Stats/assets/23132897/7c327849-ce13-4b3e-81e5-876ff5010a8c)
-![image](https://github.com/keybangz/TF2_Dodgeball_Stats/assets/23132897/12ae3ff3-fdc4-4258-8545-43728ec0e536)
+![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/c8961676-b63d-4bef-8e1e-3a81f7d755c1)
+![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/2879c444-3939-4be2-b937-155f51498e63)
+
+### Select other players stats!
+![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/38a2acf0-619b-4d69-97ac-af1d0f9c3710)
+
