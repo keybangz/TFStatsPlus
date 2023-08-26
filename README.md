@@ -15,3 +15,8 @@ A Stat plugin mainly used for the dodgeball gamemode of Team Fortress 2. Soon to
 ### Select other players stats!
 ![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/38a2acf0-619b-4d69-97ac-af1d0f9c3710)
 
+## MYSQL TABLE EXAMPLE
+
+![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/07433592-080b-4b3d-aebd-fb3eed2e0f07)
+
+
