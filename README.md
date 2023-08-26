@@ -1,7 +1,7 @@
 # TF2Stats+
 A Team Fortress 2 plugin aimed to be a replacement for the popular [**[TF2] Ranking and Item Logger**](https://forums.alliedmods.net/showthread.php?p=987696). This plugin was made in my own time as a challenge to try something new, especially designing a modern web panel with a nice default look.
 
-**CONTEXT LINKS**
+**CONTEXT LINKS**\
 [Plugin](#Plugin)\
 [Web Panel](#Web-Panel)\
 [MySQL](#MySQL)
