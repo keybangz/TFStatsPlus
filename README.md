@@ -18,7 +18,7 @@ Currently tracks the following stats:\
 **Deaths** (Does not include suicides, unknown entity deaths etc)\
 **Assists**
 
-At the current time, the plugin does not track events such as air blasting, destroying buildings, etc. \See (TODO: Add issue for plugin development)
+At the current time, the plugin does not track events such as air blasting, destroying buildings, etc.\See (TODO: Add issue for plugin development)
 ## ConVars
 
 `sm_tf2stats_enable (def: 1)`  - Enable or disable the plugin?\
