@@ -12,6 +12,12 @@ A Team Fortress 2 plugin aimed to be a replacement for the popular [**[TF2] Rank
 The general gameplay logging goes like this:\
 `X` player dies to `Y` - **Player Y gains `ConVarValue` points, Player X loses `ConVarValue` points.** 
 
+Currently tracks the following stats:\
+**Points** (For leaderboard)
+**Kills**
+**Deaths** (Does not include suicides, unknown entity deaths etc)
+**Assists**
+
 At the current time, the plugin does not track events such as air blasting, destroying buildings, etc. \See (TODO: Add issue for plugin development)
 ## ConVars
 
