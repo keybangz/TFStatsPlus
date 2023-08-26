@@ -4,7 +4,8 @@ A Team Fortress 2 plugin aimed to be a replacement for the popular [**[TF2] Rank
 **CONTEXT LINKS**
 [Plugin](#Plugin)
 [Web Panel](#Web-Panel)
-[MySQL](#MySQL Example)
+[MySQL](#MySQL)
+
 # Plugin
 
 ## Features
