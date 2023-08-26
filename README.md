@@ -5,10 +5,10 @@ A Team Fortress 2 plugin aimed to be a replacement for the popular [**[TF2] Rank
 [Plugin](#Plugin)\
 [Web Panel](#Web-Panel)\
 [MySQL](#MySQL)
+
 # Plugin
 
 ## Features
-
 The general gameplay logging goes like this:\
 `X` player dies to `Y` - **Player Y gains `ConVarValue` points, Player X loses `ConVarValue` points.** 
 
@@ -19,15 +19,15 @@ Currently tracks the following stats:\
 **Assists**
 
 At the current time, the plugin does not track events such as air blasting, destroying buildings, etc.
-## ConVars
 
+## ConVars
 `sm_tf2stats_enable (def: 1)`  - Enable or disable the plugin?\
 `sm_tf2stats_pointgain (def: 2)`  - How many points does a player gain for killing another player?\
 `sm_tf2stats_pointloss (def: 2)`  - How many points does a player lose for dying to another player?\
 `sm_tf2stats_db (def: leaderboard)` - Name of database entry in databases.cfg.\
 `sm_tf2stats_table (def: tf2statsplus)` - Name of table generated in database by plugin.
-## Commands
 
+## Commands
 `sm_rank` (!rank) - Display the rank menu which displays the current clients stats.\
 `sm_top` (!top) - Display the top 100 leaderboard according to the latest SELECT query on the database.
 ## In-Game leaderboard
@@ -40,10 +40,11 @@ At the current time, the plugin does not track events such as air blasting, dest
 
 # Web-Panel
 
-# Placeholder Leaderboard
+## Placeholder Leaderboard
 
 ![image](https://github.com/keybangz/TF2_Dodgeball_Stats/assets/23132897/e8966b4a-4a14-4b6a-95ca-9ad3c578880b)
-## MySQL
+
+# MySQL
 
 ![image](https://github.com/keybangz/TFStatsPlus/assets/23132897/07433592-080b-4b3d-aebd-fb3eed2e0f07)
 
