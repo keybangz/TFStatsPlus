@@ -17,7 +17,7 @@ At the current time, the plugin does not track events such as air blasting, dest
 
 `sm_tf2stats_enable (def: 1)`  - Enable or disable the plugin?\
 `sm_tf2stats_pointgain (def: 2)`  - How many points does a player gain for killing another player?\
-`sm_tf2stats_pointloss (def: 2)`  - How many points does a player lose for dying to another \player?
+`sm_tf2stats_pointloss (def: 2)`  - How many points does a player lose for dying to another player?\
 `sm_tf2stats_db (def: leaderboard)` - Name of database entry in databases.cfg.\
 `sm_tf2stats_table (def: tf2statsplus)` - Name of table generated in database by plugin.\
 ## Commands
